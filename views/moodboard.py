@@ -11,9 +11,11 @@ import tempfile
 # Title of the page
 st.title("Fine-tuning GenAI Project")
 
-# Initialize image number in session state
+# Initialize session state variables
 if "image_number" not in st.session_state:
     st.session_state.image_number = 1
+if "navigation_clicked" not in st.session_state:
+    st.session_state.navigation_clicked = False
 
 # Load Google Cloud Storage credentials
 gcs_credentials = json.loads(st.secrets["database"]["credentials"])
@@ -31,19 +33,28 @@ bucket = client.get_bucket(bucket_name)
 connection_string = st.secrets["database"]["connection_string"]
 engine = create_engine(connection_string)
 
-# Input for the image number (editable by user)
-image_number_input = st.text_input("Enter Image Number:", value=str(st.session_state.image_number))
+# Function to check if image exists in bucket
+def image_exists_in_bucket(bucket, image_path):
+    blob = bucket.blob(image_path)
+    try:
+        blob.reload()
+        return True
+    except Exception:
+        return False
 
-# Validate the input to ensure it's a positive integer
-try:
-    st.session_state.image_number = int(image_number_input)
-    if st.session_state.image_number < 1:
-        st.error("Please enter a positive integer.")
-except ValueError:
-    st.error("Please enter a valid integer.")
+# Navigation callback functions
+def go_back():
+    if st.session_state.image_number > 1 and not st.session_state.navigation_clicked:
+        st.session_state.image_number -= 1
+        st.session_state.navigation_clicked = True
 
-# Folder containing the images
-image_folder = "Prompts/Final images moodboard/"
+def go_next():
+    if not st.session_state.navigation_clicked:
+        next_image = f"image{st.session_state.image_number + 1}.jpg"
+        next_image_path = os.path.join("Prompts/Final images moodboard/", next_image)
+        if image_exists_in_bucket(bucket, next_image_path):
+            st.session_state.image_number += 1
+            st.session_state.navigation_clicked = True
 
 # Function to fetch prompts from PostgreSQL based on image number
 def get_prompts(image_number):
@@ -57,7 +68,7 @@ def get_prompts(image_number):
     prompts_df = pd.read_sql(query, engine)
     return prompts_df
 
-# Function to fetch image feedback from PostgreSQL based on image name
+# Function to fetch image feedback
 def get_image_feedback(image_name):
     query = text("""
     SELECT COALESCE(image_feedback, 'GOOD') AS image_feedback
@@ -68,7 +79,7 @@ def get_image_feedback(image_name):
         result = conn.execute(query, {"image_name": image_name}).fetchone()
     return result[0] if result else 'GOOD'
 
-# Function to update the edited prompt and feedback in the database
+# Function to update prompt
 def update_prompt(serial_nos, new_prompt, feedback):
     try:
         serial_nos = int(serial_nos)
@@ -84,7 +95,7 @@ def update_prompt(serial_nos, new_prompt, feedback):
     except Exception as e:
         st.error(f"Failed to update prompt: {e}")
 
-# Function to update the image review in the database
+# Function to update image review
 def update_image_review(image_name, review):
     try:
         update_query = text("""
@@ -99,7 +110,7 @@ def update_image_review(image_name, review):
     except Exception as e:
         st.error(f"Failed to update image review: {e}")
 
-# Function to add a new prompt to the database
+# Function to add new prompt
 def add_new_prompt(image_number, new_prompt):
     try:
         insert_query = text("""
@@ -115,7 +126,7 @@ def add_new_prompt(image_number, new_prompt):
 
 # Display the selected image and its prompts
 image_name = f"image{st.session_state.image_number}.jpg"
-image_path = os.path.join(image_folder, image_name)
+image_path = os.path.join("Prompts/Final images moodboard/", image_name)
 
 col1, col2 = st.columns([1, 2])
 
@@ -128,14 +139,10 @@ with col1:
 
     # Get existing review from the database or default to "GOOD"
     image_review_text = get_image_feedback(image_name)
-    
-    # Convert existing review to a numeric score for the slider
     default_rating = 10 if image_review_text == "GOOD" else 1
-
-    # Slider to rate the image from 1 to 10
+    
+    # Image rating slider
     image_review = st.slider(f"Rate Image {st.session_state.image_number}:", 1, 10, value=default_rating, format="%d")
-
-    # Map slider value back to "GOOD" or "BAD" for database storage
     review_text = "GOOD" if image_review > 5 else "BAD"
 
     if st.button(f"Save Image Review {st.session_state.image_number}"):
@@ -145,15 +152,23 @@ with col2:
     prompts_df = get_prompts(st.session_state.image_number)
     if not prompts_df.empty:
         prompt_options = prompts_df['image_prompts'].tolist()
-        selected_prompt_index = st.selectbox(f"Select Prompt for Image {st.session_state.image_number}", range(len(prompt_options)), format_func=lambda x: f"Prompt {x+1}")
+        selected_prompt_index = st.selectbox(f"Select Prompt for Image {st.session_state.image_number}", 
+                                           range(len(prompt_options)), 
+                                           format_func=lambda x: f"Prompt {x+1}")
         selected_prompt = prompt_options[selected_prompt_index]
         serial_nos = prompts_df.iloc[selected_prompt_index]['serial_nos']
 
         st.write(f"Prompt {selected_prompt_index + 1}:")
-        new_prompt = st.text_area(f"Edit Prompt {selected_prompt_index + 1}", value=selected_prompt, key=f"prompt_{serial_nos}")
+        new_prompt = st.text_area(f"Edit Prompt {selected_prompt_index + 1}", 
+                                value=selected_prompt, 
+                                key=f"prompt_{serial_nos}")
         
         default_rating = 10 if prompts_df.iloc[selected_prompt_index]['prompt_feedback'] == "GOOD" else 1
-        prompt_review_score = st.slider(f"Rate Prompt {selected_prompt_index + 1}:", 1, 10, value=default_rating, format="%d", key=f"review_{serial_nos}")
+        prompt_review_score = st.slider(f"Rate Prompt {selected_prompt_index + 1}:", 
+                                      1, 10, 
+                                      value=default_rating, 
+                                      format="%d", 
+                                      key=f"review_{serial_nos}")
         
         prompt_review = "GOOD" if prompt_review_score > 5 else "BAD"
 
@@ -162,14 +177,19 @@ with col2:
     else:
         st.warning(f"No prompts found for image {st.session_state.image_number}.")
 
+    # Add new prompt section
     st.write(f"Add a new prompt for Image {st.session_state.image_number}:")
-    new_prompt_input = st.text_area(f"New Prompt for Image {st.session_state.image_number}", key=f"new_prompt_{st.session_state.image_number}")
+    new_prompt_input = st.text_area(f"New Prompt for Image {st.session_state.image_number}", 
+                                  key=f"new_prompt_{st.session_state.image_number}")
     if st.button(f"Add New Prompt for Image {st.session_state.image_number}"):
         if new_prompt_input.strip():
             add_new_prompt(st.session_state.image_number, new_prompt_input)
         else:
             st.warning("New prompt cannot be empty.")
 
+
+
+# Approve/Reject buttons styling
 button_styles = """
     <style>
         .stButton > button[kind="primary"] {
@@ -178,9 +198,23 @@ button_styles = """
             border: none;
             width: 100%;
         }
+        #reject_button button {
+            background-color: #dc3545; /* Red background color */
+            color: white;
+            border: none;
+            width: 100%;
+            font-size: 16px;
+            padding: 10px;
+        }
         
         .stButton > button[kind="secondary"] {
-            background-color: #dc3545;
+            background-color: #2f4f4f;
+            color: white;
+            border: none;
+            width: 100%;
+        }
+        .stButton > button[kind="secondary"] {
+            background-color: #2f4f4f;
             color: white;
             border: none;
             width: 100%;
@@ -189,11 +223,11 @@ button_styles = """
 """
 st.markdown(button_styles, unsafe_allow_html=True)
 
-# Create two columns for the buttons
+# Approve/Reject buttons
 col1, col2 = st.columns(2)
 
 with col1:
-    if st.button("Approve", key="approve_button", type="primary"):
+    if st.button("✓ Approve", key="approve_button", type="primary"):
         st.success(f"Image {st.session_state.image_number} Approved.")
         try:
             update_query = text("""
@@ -209,7 +243,7 @@ with col1:
             st.error(f"Failed to update status to Approved: {e}")
 
 with col2:
-    if st.button("Reject", key="reject_button", type="secondary"):
+    if st.button("✕ Reject", key="reject_button", type="secondary"):
         st.warning(f"Image {st.session_state.image_number} Rejected.")
         try:
             update_query = text("""
@@ -224,43 +258,20 @@ with col2:
         except Exception as e:
             st.error(f"Failed to update status to Rejected: {e}")
 
-if "image_number" not in st.session_state:
-    st.session_state.image_number = 1
-
-# Remove the text input for image number and replace with this navigation system
+# Navigation buttons
 col1, col2, col3 = st.columns([1, 1, 1])
 
 with col1:
-    if st.button("← Back", key="back_button"):
-        if st.session_state.image_number > 1:
-            st.session_state.image_number -= 1
-            # Force reload of the page with new image number
-            st.rerun()
+    if st.button("← Back", key="back_button", on_click=go_back):
+        pass
 
 with col2:
     st.markdown(f"<h3 style='text-align: center'>Image {st.session_state.image_number}</h3>", unsafe_allow_html=True)
 
 with col3:
-    if st.button("Next →", key="next_button"):
-        # Check if next image exists in bucket before incrementing
-        next_image = f"image{st.session_state.image_number + 1}.jpg"
-        next_image_path = os.path.join(image_folder, next_image)
-        try:
-            # Check if next image exists in bucket
-            bucket.blob(next_image_path).reload()
-            st.session_state.image_number += 1
-            # Force reload of the page with new image number
-            st.rerun()
-        except Exception:
-            st.error("No more images available")
+    if st.button("Next →", key="next_button", on_click=go_next):
+        pass
 
-# Remove the old navigation code at the bottom of the file
-
-# Function to check if image exists in bucket (add this with your other functions)
-def image_exists_in_bucket(bucket, image_path):
-    blob = bucket.blob(image_path)
-    try:
-        blob.reload()
-        return True
-    except Exception:
-        return False
+# Reset navigation_clicked state at the end of the script
+if st.session_state.navigation_clicked:
+    st.session_state.navigation_clicked = False

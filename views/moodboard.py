@@ -275,3 +275,40 @@ with col3:
 # Reset navigation_clicked state at the end of the script
 if st.session_state.navigation_clicked:
     st.session_state.navigation_clicked = False
+button_styles = """
+    <style>
+        .stButton > button[kind="primary"] {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            width: 100%;
+            padding: 15px;  /* Adjust padding to change button size */
+            font-size: 18px;  /* Adjust font size */
+        }
+        
+        #reject_button button {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            width: 100%;
+            padding: 10px;  /* Adjust padding to change button size */
+            font-size: 18px;  /* Adjust font size */
+        }
+
+        .stButton > button[kind="secondary"] {
+            background-color: #2f4f4f;
+            color: white;
+            border: none;
+            width: 100%;
+            padding: 15px;  /* Adjust padding to change button size */
+            font-size: 18px;  /* Adjust font size */
+        }
+
+        /* Custom styles for the Back and Next buttons */
+        .stButton > button {
+            padding: 10px 20px;  /* Adjust padding for Back and Next buttons */
+            font-size: 16px;  /* Adjust font size for Back and Next buttons */
+        }
+    </style>
+"""
+st.markdown(button_styles, unsafe_allow_html=True)

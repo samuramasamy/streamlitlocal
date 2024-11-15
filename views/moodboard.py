@@ -1,4 +1,3 @@
-
 import streamlit as st
 import os
 from PIL import Image
@@ -171,11 +170,30 @@ with col2:
         else:
             st.warning("New prompt cannot be empty.")
 
-# Approve and Reject buttons
+button_styles = """
+    <style>
+        .stButton > button[kind="primary"] {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            width: 100%;
+        }
+        
+        .stButton > button[kind="secondary"] {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            width: 100%;
+        }
+    </style>
+"""
+st.markdown(button_styles, unsafe_allow_html=True)
+
+# Create two columns for the buttons
 col1, col2 = st.columns(2)
 
 with col1:
-    if st.button("Approve"):
+    if st.button("Approve", key="approve_button", type="primary"):
         st.success(f"Image {st.session_state.image_number} Approved.")
         try:
             update_query = text("""
@@ -185,12 +203,13 @@ with col1:
             """)
             with engine.connect() as conn:
                 conn.execute(update_query, {"image_name": image_name})
+                conn.commit()
             st.success("Image status updated to Approved in the database.")
         except Exception as e:
             st.error(f"Failed to update status to Approved: {e}")
 
 with col2:
-    if st.button("Reject"):
+    if st.button("Reject", key="reject_button", type="secondary"):
         st.warning(f"Image {st.session_state.image_number} Rejected.")
         try:
             update_query = text("""
@@ -200,21 +219,48 @@ with col2:
             """)
             with engine.connect() as conn:
                 conn.execute(update_query, {"image_name": image_name})
+                conn.commit()
             st.warning("Image status updated to Rejected in the database.")
         except Exception as e:
             st.error(f"Failed to update status to Rejected: {e}")
 
-# # Next button
-# if st.button("Next"):
-#     st.session_state.image_number += 3  # Increment image number for the next image
-# Initialize session state
-if 'image_number' not in st.session_state:
-    st.session_state.image_number = 0
+if "image_number" not in st.session_state:
+    st.session_state.image_number = 1
 
-# Create empty columns for alignment
-col1, col2, col3 = st.columns([1, 1, 1])  # Adjust proportions as needed
+# Remove the text input for image number and replace with this navigation system
+col1, col2, col3 = st.columns([1, 1, 1])
 
-# Place the "Next" button in the right-most column
+with col1:
+    if st.button("← Back", key="back_button"):
+        if st.session_state.image_number > 1:
+            st.session_state.image_number -= 1
+            # Force reload of the page with new image number
+            st.rerun()
+
+with col2:
+    st.markdown(f"<h3 style='text-align: center'>Image {st.session_state.image_number}</h3>", unsafe_allow_html=True)
+
 with col3:
-    if st.button("Next"):
-        st.session_state.image_number += 1
+    if st.button("Next →", key="next_button"):
+        # Check if next image exists in bucket before incrementing
+        next_image = f"image{st.session_state.image_number + 1}.jpg"
+        next_image_path = os.path.join(image_folder, next_image)
+        try:
+            # Check if next image exists in bucket
+            bucket.blob(next_image_path).reload()
+            st.session_state.image_number += 1
+            # Force reload of the page with new image number
+            st.rerun()
+        except Exception:
+            st.error("No more images available")
+
+# Remove the old navigation code at the bottom of the file
+
+# Function to check if image exists in bucket (add this with your other functions)
+def image_exists_in_bucket(bucket, image_path):
+    blob = bucket.blob(image_path)
+    try:
+        blob.reload()
+        return True
+    except Exception:
+        return False

@@ -33,6 +33,17 @@ bucket = client.get_bucket(bucket_name)
 connection_string = st.secrets["database"]["connection_string"]
 engine = create_engine(connection_string)
 
+# Input for the image number (editable by user)
+image_number_input = st.text_input("Enter Image Number:", value=str(st.session_state.image_number))
+
+# Validate the input to ensure it's a positive integer
+try:
+    st.session_state.image_number = int(image_number_input)
+    if st.session_state.image_number < 1:
+        st.error("Please enter a positive integer.")
+except ValueError:
+    st.error("Please enter a valid integer.")
+
 # Function to check if image exists in bucket
 def image_exists_in_bucket(bucket, image_path):
     blob = bucket.blob(image_path)

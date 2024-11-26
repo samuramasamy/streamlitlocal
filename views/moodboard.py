@@ -152,6 +152,8 @@ def add_new_prompt(image_number, prompt_text):
 
 # Function to handle image number update
 def update_image_number():
+
+   
     try:
         # Use the input from the text input to update image number
         input_number = int(st.session_state.image_number_input)
@@ -161,14 +163,14 @@ def update_image_number():
             st.session_state.image_number = input_number
     except ValueError:
         st.error("Please enter a valid integer.")
+        
 image_number_input = st.text_input(
-    "Enter Image Number:", 
-    value=str(st.session_state.image_number),
-    key="image_number_input",
-    on_change=update_image_number
+"Enter Image Number:", 
+value=str(st.session_state.image_number),
+    
+key="image_number_input",
+on_change=update_image_number
 )
-
-
 
 # # Valid
 # Display the selected image and its prompts

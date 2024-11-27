@@ -57,16 +57,23 @@ moodboard_page = st.Page(
     title="Moodboard",
     icon=":material/image:",
 )
-#project_2_page = st.Page(
-#    "views/chatbot.py",
-#    title="Chat Bot",
- ##   icon=":material/smart_toy:",
-#)
+upload_prompts_page = st.Page(
+    page = "views/upload_prompts.py",
+    title="upload_prompts",
+    icon=":material/image:",
+)
+upload_images_page = st.Page(
+    page = "views/upload_images.py",
+    title="upload_images",
+    icon=":material/image:",
+)
 
 pg = st.navigation(
     {
         "Info": [about_page],
-        "Project": [moodboard_page],
+        "Project": [moodboard_page, upload_prompts_page,upload_images_page],
     }
 )
 pg.run()
+
+

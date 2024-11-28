@@ -216,9 +216,9 @@ def update_corelation_review(serial_nos, corelation_review):
         # with engine.connect() as conn:
         cursor.execute(update_query, (corelation_review, int(serial_nos)))
         conn.commit()
-        st.success("co-relation review updated successfully!")
+        st.success("correlation review updated successfully!")
     except Exception as e:
-        st.error(f"Failed to update co-relation review: {e}")
+        st.error(f"Failed to update correlation review: {e}")
 
 
 

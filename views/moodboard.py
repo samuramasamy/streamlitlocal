@@ -1,3 +1,5 @@
+
+import logging
 import streamlit as st
 import os
 from PIL import Image
@@ -8,8 +10,29 @@ from io import BytesIO
 import json
 import tempfile
 
+
+
+import psycopg2
+
+db_connection = {
+    "host": "34.93.64.44",
+    "port": "5432",
+    "dbname": "genai",
+    "user": "postgres",
+    "password": "postgres-genai"
+}
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
+logger = logging.getLogger()
+logger.info("logger")
+conn = psycopg2.connect(**db_connection)
+cursor = conn.cursor()
+logger.info("db_connection")
+
+
 # Title of the page
 st.title("Fine-tuning GenAI Project")
+
 
 # Initialize session state variables
 if "image_number" not in st.session_state:
@@ -74,8 +97,9 @@ def go_next():
 # Function to fetch prompts from PostgreSQL based on image number
 def get_prompts(image_number):
     query = f"""
-    SELECT serial_nos, sno, image_prompts, 
+    SELECT serial_nos, sno, image_prompts,
            COALESCE(prompt_feedback, 10) AS prompt_feedback,
+           COALESCE(correlation_feedback, 10) AS correlation_feedback,
            COALESCE(status, 'PENDING') AS status
     FROM prompts
     WHERE sno = {image_number}
@@ -83,6 +107,18 @@ def get_prompts(image_number):
     """
     prompts_df = pd.read_sql(query, engine)
     return prompts_df
+
+# Function to fetch image feedback and status
+def get_prompt_feedback(image_name):
+    query = text("""
+    SELECT COALESCE(prompt_feedback, 10) AS prompt_feedback,
+           COALESCE(status, 'PENDING') AS status
+    FROM prompts
+    WHERE image_prompts = :image_name
+    """)
+    with engine.connect() as conn:
+        result = conn.execute(query, {"image_name": image_name}).fetchone()
+    return result[0] if result else 10, result[1] if result else 'PENDING'
 
 # Function to fetch image feedback and status
 def get_image_feedback(image_name):
@@ -96,27 +132,47 @@ def get_image_feedback(image_name):
         result = conn.execute(query, {"image_name": image_name}).fetchone()
     return result[0] if result else 10, result[1] if result else 'PENDING'
 
-# Function to update prompt
-def update_prompt(serial_nos, prompt_text, feedback,):
+
+
+# Function to update prompt in the database
+def update_prompt(serial_nos, new_prompt):
     try:
         serial_nos = int(serial_nos)
-        update_query = text("""
-        UPDATE prompts
-        SET image_prompts = :prompt_text, 
-            prompt_feedback = :feedback
-        WHERE serial_nos = :serial_nos
-        """)
-        with engine.connect() as conn:
-            conn.execute(update_query, {
-                "prompt_text": prompt_text,
-                "feedback": feedback,
-                "serial_nos": serial_nos
-            })
-            conn.commit()
-        st.success("Prompt updated successfully!")
-    except Exception as e:
-        st.error(f"Failed to update prompt: {e}")
+        logger.info(f"sno => {serial_nos}")
+        logger.info(f"new_prompts => {new_prompt}")
 
+        # SQL Query to update the prompt and feedback in the database
+        update_query = """
+        UPDATE prompts
+        SET image_prompts = %s
+        WHERE serial_nos = %s
+        """
+        logger.info(f"update_query => {update_query}")
+
+       
+        cursor.execute(update_query, (
+             
+            # prompt_feedback,
+            # image_prompts
+            new_prompt,
+            serial_nos
+        ))
+        conn.commit()
+        logger.info("updated")
+
+        # Check if any rows were affected
+        if cursor.rowcount > 0:
+            st.success("Prompt updated successfully!")
+            logger.info(f"Rows updated: {cursor.rowcount}")
+        else:
+            st.warning("No rows were updated. Check if the serial_nos exists in the database.")
+            logger.warning(f"Query executed, but no rows matched serial_nos: {serial_nos}")
+           
+    except Exception as e:
+        # Log and show error if something goes wrong
+        st.error(f"Failed to update prompt: {e}")
+        logger.error(f"Exception occurred: {e}")
+       
 # Function to update image review
 def update_image_review(image_name, review):
     try:
@@ -125,12 +181,47 @@ def update_image_review(image_name, review):
         SET image_feedback = :review
         WHERE image = :image_name
         """)
-        with engine.connect() as conn:
-            conn.execute(update_query, {"review": review, "image_name": image_name})
-            conn.commit()
+        # with engine.connect() as conn:
+        cursor.execute(update_query, {"review": review, "image_name": image_name})
+        conn.commit()
         st.success("Image review updated successfully!")
     except Exception as e:
         st.error(f"Failed to update image review: {e}")
+       
+# Function to update image review
+def update_prompt_review(serial_nos, review):
+    logger.info("entering")
+    try:
+        update_query = """
+        UPDATE prompts
+        SET prompt_feedback = %s
+        WHERE serial_nos = %s
+        """
+       
+        # with engine.connect() as conn:
+        cursor.execute(update_query, (review, int(serial_nos)))
+        conn.commit()
+        st.success("prompt review updated successfully!")
+    except Exception as e:
+        st.error(f"Failed to update prompt review: {e}")
+       
+def update_corelation_review(serial_nos, corelation_review):
+    logger.info("entering")
+    try:
+        update_query = """
+        UPDATE prompts
+        SET correlation_feedback = %s
+        WHERE serial_nos = %s
+        """
+       
+        # with engine.connect() as conn:
+        cursor.execute(update_query, (corelation_review, int(serial_nos)))
+        conn.commit()
+        st.success("co-relation review updated successfully!")
+    except Exception as e:
+        st.error(f"Failed to update co-relation review: {e}")
+
+
 
 # Function to add new prompt
 def add_new_prompt(image_number, prompt_text):
@@ -150,6 +241,8 @@ def add_new_prompt(image_number, prompt_text):
         st.error(f"Failed to add new prompt: {e}")
 
 
+
+
 # Function to handle image number update
 def update_image_number():
 
@@ -163,43 +256,19 @@ def update_image_number():
             st.session_state.image_number = input_number
     except ValueError:
         st.error("Please enter a valid integer.")
-        
+       
+col1, col2 , col3= st.columns([1, 2, 3])
 
-st.markdown("""
-    <style>
-    /* Custom style for compact search input */
-    div[data-testid="stTextInput"] {
-        max-width: 300px;  /* Make the search bar smaller */
-    }
-    div[data-testid="stTextInput"] input {
-        border: 2px solid #4CAF50;
-        border-radius: 5px;
-        padding: 10px 10px 10px 35px;  /* Space for icon */
-        font-size: 14px;
-        background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>');
-        background-repeat: no-repeat;
-        background-position: 8px center;
-        background-size: 20px;
-    }
-    div[data-testid="stTextInput"] input:focus {
-        outline: none;
-        border-color: #45a049;
-        box-shadow: 0 0 5px rgba(76, 175, 80, 0.5);
-    }
-    </style>
-""", unsafe_allow_html=True)
-col1, col2, col3 = st.columns([1,2,3])
 with col1:
-    st.markdown(f"<h4 style='text-align: center'>Image {st.session_state.image_number}</h4>", unsafe_allow_html=True)
+    st.markdown(f"<h3 style='text-align: center'>Image {st.session_state.image_number}</h3>", unsafe_allow_html=True)
 
-with col3:
-        # Compact search input with icon
+with col3:    
         image_number_input = st.text_input(
-            "", 
-            value=str(st.session_state.image_number),
-            placeholder=f"Enter image number (1-{MAX_IMAGE_NUMBER})",
-            key="image_number_input",
-            on_change=update_image_number
+        "Enter Image Number:",
+        value=str(st.session_state.image_number),
+           
+        key="image_number_input",
+        on_change=update_image_number
         )
 
 # # Valid
@@ -228,75 +297,72 @@ with col1:
     # Image rating slider
     image_review = st.slider(f"Rate Image {st.session_state.image_number}:", 1, 10, value=image_review_score, format="%d")
 
-    if st.button("Submit Rating "):
+    if st.button(f"Submit rating"):
         update_image_review(image_name, image_review)
+
 
 with col2:
     prompts_df = get_prompts(st.session_state.image_number)
     if not prompts_df.empty:
         prompt_options = prompts_df['image_prompts'].tolist()
-        selected_prompt_index = st.selectbox(f"Select Prompt for Image {st.session_state.image_number}", 
-                                             range(len(prompt_options)), 
-                                             format_func=lambda x: f"Prompt {x+1}")
+        selected_prompt_index = st.selectbox(
+            f"Select prompt for image {st.session_state.image_number}",
+            range(len(prompt_options)),
+            format_func=lambda x: f"Prompt {x + 1}"
+        )
         selected_prompt = prompt_options[selected_prompt_index]
         serial_nos = prompts_df.iloc[selected_prompt_index]['serial_nos']
-        prompt_status = prompts_df.iloc[selected_prompt_index]['status']
+       
+       
+    # Get existing review and status from the database
+        prompt_review_score, image_status = get_prompt_feedback(image_name)
 
-        st.write(f"Prompt {selected_prompt_index + 1}:")
-        new_prompt = st.text_area(f"Edit Prompt {selected_prompt_index + 1}", 
-                                  value=selected_prompt, 
-                                  key=f"prompt_{serial_nos}")
-        
-        prompt_review_score = st.slider(f"Rate Prompt {selected_prompt_index + 1}:", 
-                                        1, 10, 
-                                        value=int(prompts_df.iloc[selected_prompt_index]['prompt_feedback']), 
-                                        format="%d", 
-                                        key=f"review_{serial_nos}")
-        
-        if st.button(f"Save Prompt {selected_prompt_index + 1}", key=f"save_prompt_{serial_nos}"):
-            update_prompt(serial_nos, new_prompt, prompt_review_score)
+        # Edit Prompt Button
+        if st.button("🖉 Edit Prompt", key=f"edit_prompt_{serial_nos}"):
+            st.session_state.edit_mode = True
+       
+        if st.session_state.get("edit_mode"):
+            with st.form(key=f"edit_form_{serial_nos}"):
+                new_prompt = st.text_area(
+                    f"Edit prompt {selected_prompt_index + 1}",
+                    value=selected_prompt,
+                    key=f"new_prompt_{serial_nos}"
+                )
+                submitted = st.form_submit_button("Update Prompt")
+                if submitted:
+                    logger.info("Update button clicked.")
+                    if new_prompt:
+                        update_prompt(serial_nos, new_prompt)
+                        st.session_state.edit_mode = False  # Exit edit mode
+                        logger.info(f"Prompt {serial_nos} successfully updated.")
+                    else:
+                        st.warning("Please provide a new prompt value.")
+                       
 
+    # Image rating slider
+        st.write(f"Prompt:- {selected_prompt}")
+        prompt_review = st.slider(f"Rate Prompt:", 1, 10, value=1, format="%d")
+
+        if st.button(f"prompt rating"):
+            update_prompt_review(serial_nos, prompt_review)
         
-        
+        corelation_review = st.slider(f"Co-relation Rate:", 1, 10, value=1, format="%d")
+
+        if st.button(f"co-relation rating"):
+            update_corelation_review(serial_nos, corelation_review)
+  
     else:
         st.warning(f"No prompts found for image {st.session_state.image_number}.")
-
    
+
+
     # Add new prompt section
     st.write(f"Add a new prompt for Image {st.session_state.image_number}:")
-    
-    # Button to toggle the text area visibility
-    add_prompt_button_key = f"add_new_prompt_button_{st.session_state.image_number}"
-    
-    # If the button is clicked, toggle visibility of the text_area
-    if st.button(f"Add New Prompt for Image {st.session_state.image_number}", key=add_prompt_button_key):
-        st.session_state.show_new_prompt_input = not st.session_state.get("show_new_prompt_input", False)
-    
-    # Display the text area if the button was clicked
-    if st.session_state.get("show_new_prompt_input", False):
-        new_prompt_input = st.text_area(f"New Prompt for Image {st.session_state.image_number}", 
-                                        key=f"new_prompt_{st.session_state.image_number}")
-    
-        # Button to save the new prompt
-        if st.button(f"Save New Prompt for Image {st.session_state.image_number}"):
-            if new_prompt_input.strip():
-                add_new_prompt(st.session_state.image_number, new_prompt_input)
-                st.session_state.show_new_prompt_input = False  # Hide text area after saving
-            else:
-                st.warning("New prompt cannot be empty.")
-
-# Navigation buttons
-col1, col2, col3 = st.columns([1, 1, 1])
-
-with col1:
-    if st.button("← Back", key="back_button", on_click=go_back):
-        pass
-with col3:
-    if st.button("Next →", key="next_button", on_click=go_next):
-        pass
-# Reset navigation_clicked state at the end of the script
-if st.session_state.navigation_clicked:
-    st.session_state.navigation_clicked = False
+    new_prompt_input = st.text_area(f"New Prompt for Image {st.session_state.image_number}",
+                                    key=f"new_prompts_{st.session_state.image_number}")
+    if st.button(f"Add New Prompt for Image {st.session_state.image_number}"):
+        add_new_prompt(st.session_state.image_number, new_prompt_input)
+       
 # Approve/Reject buttons styling
 button_styles = """
     <style>
@@ -308,7 +374,7 @@ button_styles = """
             padding: 15px;
             font-size: 18px;
         }
-        
+       
         #reject_button button {
             background-color: #dc3545;
             color: white;
@@ -317,7 +383,7 @@ button_styles = """
             padding: 15px;
             font-size: 18px;
         }
-        
+       
         .stButton > button[kind="secondary"] {
             background-color: #2f4f4f;
             color: white;
@@ -326,7 +392,7 @@ button_styles = """
             padding: 15px;
             font-size: 18px;
         }
-        
+       
         /* Navigation buttons */
         .stButton > button {
             padding: 10px 20px;
@@ -335,8 +401,10 @@ button_styles = """
     </style>
 """
 st.markdown(button_styles, unsafe_allow_html=True)
+
 # Approve/Reject buttons
 col1, col2 = st.columns(2)
+
 with col1:
     if st.button("✓ Approve", key="approve_button", type="primary"):
         st.success(f"Image {st.session_state.image_number} Approved.")
@@ -347,12 +415,14 @@ with col1:
             SET status = 'APPROVED'
             WHERE image = :image_name
             """)
+           
             # Update all prompts status for this image
             prompts_update_query = text("""
             UPDATE prompts
             SET status = 'APPROVED'
             WHERE sno = :image_number
             """)
+           
             with engine.connect() as conn:
                 conn.execute(image_update_query, {"image_name": image_name})
                 conn.execute(prompts_update_query, {"image_number": st.session_state.image_number})
@@ -360,6 +430,7 @@ with col1:
             st.success("Image and associated prompts status updated to Approved in the database.")
         except Exception as e:
             st.error(f"Failed to update status to Approved: {e}")
+
 with col2:
     if st.button("✕ Reject", key="reject_button", type="secondary"):
         st.warning(f"Image {st.session_state.image_number} Rejected.")
@@ -370,12 +441,14 @@ with col2:
             SET status = 'REJECTED'
             WHERE image = :image_name
             """)
+           
             # Update all prompts status for this image
             prompts_update_query = text("""
             UPDATE prompts
             SET status = 'REJECTED'
             WHERE sno = :image_number
-            """)            
+            """)
+           
             with engine.connect() as conn:
                 conn.execute(image_update_query, {"image_name": image_name})
                 conn.execute(prompts_update_query, {"image_number": st.session_state.image_number})
@@ -385,5 +458,21 @@ with col2:
             st.error(f"Failed to update status to Rejected: {e}")
 
 
+# Navigation buttons
+col1, col2, col3 = st.columns([1, 1, 1])
 
+with col1:
+    if st.button("← Back", key="back_button", on_click=go_back):
+        pass
+
+# with col2:
+#     st.markdown(f"<h3 style='text-align: center'>Image {st.session_state.image_number}</h3>", unsafe_allow_html=True)
+
+with col3:
+    if st.button("Next →", key="next_button", on_click=go_next):
+        pass
+
+# Reset navigation_clicked state at the end of the script
+if st.session_state.navigation_clicked:
+    st.session_state.navigation_clicked = False
 

@@ -8,9 +8,6 @@ from google.cloud import storage
 from io import BytesIO
 import json
 import tempfile
-
-
-
 import psycopg2
 
 db_connection = {
@@ -98,7 +95,6 @@ def get_prompts(image_number):
     query = f"""
     SELECT serial_nos, sno, image_prompts,
            COALESCE(prompt_feedback, 10) AS prompt_feedback,
-           COALESCE(correlation_feedback, 10) AS correlation_feedback,
            COALESCE(status, 'PENDING') AS status
     FROM prompts
     WHERE sno = {image_number}
@@ -131,16 +127,12 @@ def get_image_feedback(image_name):
         result = conn.execute(query, {"image_name": image_name}).fetchone()
     return result[0] if result else 10, result[1] if result else 'PENDING'
 
-
-
-# Function to update prompt in the database
 def update_prompt(serial_nos, new_prompt):
     try:
         serial_nos = int(serial_nos)
         logger.info(f"sno => {serial_nos}")
         logger.info(f"new_prompts => {new_prompt}")
 
-        # SQL Query to update the prompt and feedback in the database
         update_query = """
         UPDATE prompts
         SET image_prompts = %s
@@ -174,14 +166,15 @@ def update_prompt(serial_nos, new_prompt):
        
 # Function to update image review
 def update_image_review(image_name, review):
+    logger.info(image_name, review)
     try:
-        update_query = text("""
+        update_query = """
         UPDATE images
-        SET image_feedback = :review
-        WHERE image = :image_name
-        """)
+        SET image_feedback = %s
+        WHERE image = %s
+        """
         # with engine.connect() as conn:
-        cursor.execute(update_query, {"review": review, "image_name": image_name})
+        cursor.execute(update_query, (review, image_name))
         conn.commit()
         st.success("Image review updated successfully!")
     except Exception as e:
@@ -239,9 +232,6 @@ def add_new_prompt(image_number, prompt_text):
     except Exception as e:
         st.error(f"Failed to add new prompt: {e}")
 
-
-
-
 # Function to handle image number update
 def update_image_number():
 
@@ -255,26 +245,12 @@ def update_image_number():
             st.session_state.image_number = input_number
     except ValueError:
         st.error("Please enter a valid integer.")
-       
-# col1, col2 , col3= st.columns([1, 2, 3])
 
-# with col1:
-#     st.markdown(f"<h3 style='text-align: center'>Image {st.session_state.image_number}</h3>", unsafe_allow_html=True)
-
-# with col3:    
-#         image_number_input = st.text_input(
-#         "Enter Image Number:",
-#         value=str(st.session_state.image_number),
-           
-#         key="image_number_input",
-#         on_change=update_image_number
-#         )
-# Styling for the application
 st.markdown("""
     <style>
     /* Custom style for compact search input */
     div[data-testid="stTextInput"] {
-        max-width: 230px;  /* Make the search bar smaller */
+        max-width: 250px;  /* Make the search bar smaller */
     }
     div[data-testid="stTextInput"] input {
         border: 3px solid #4CAF50;
@@ -309,7 +285,8 @@ with col3:
         on_change=update_image_number
     )
 
-# # Valid
+       
+
 # Display the selected image and its prompts
 image_name = f"image{st.session_state.image_number}.jpg"
 image_path = os.path.join(image_prefix, image_name)
@@ -328,13 +305,10 @@ with col1:
             st.error(f"Image {st.session_state.image_number} not found.")
     except Exception as e:
         st.error(f"Error loading image: {e}")
-
     # Get existing review and status from the database
     image_review_score, image_status = get_image_feedback(image_name)
-
     # Image rating slider
     image_review = st.slider(f"Rate Image {st.session_state.image_number}:", 1, 10, value=image_review_score, format="%d")
-
     if st.button(f"Submit rating"):
         update_image_review(image_name, image_review)
 
@@ -350,10 +324,7 @@ with col2:
         )
         selected_prompt = prompt_options[selected_prompt_index]
         serial_nos = prompts_df.iloc[selected_prompt_index]['serial_nos']
-       
-       
-    # Get existing review and status from the database
-        prompt_review_score, image_status = get_prompt_feedback(image_name)
+
 
         # Edit Prompt Button
         if st.button("🖉 Edit Prompt", key=f"edit_prompt_{serial_nos}"):
@@ -375,32 +346,38 @@ with col2:
                         logger.info(f"Prompt {serial_nos} successfully updated.")
                     else:
                         st.warning("Please provide a new prompt value.")
-                       
+           
+       
+       
+    # Get existing review and status from the database
+        prompt_review_score, image_status = get_prompt_feedback(image_name)
 
     # Image rating slider
         st.write(f"Prompt:- {selected_prompt}")
-        prompt_review = st.slider(f"Rate Prompt:", 1, 10, value=1, format="%d")
+        prompt_review = st.slider(f"Rate Prompt:", 1, 10, value=0, format="%d")
 
         if st.button(f"prompt rating"):
             update_prompt_review(serial_nos, prompt_review)
-        
-        corelation_review = st.slider(f"Co-relation Rate:", 1, 10, value=1, format="%d")
+                    
+        corelation_review = st.slider(f"Co-relation Rate:", 1, 10, value=0, format="%d")
 
-        if st.button(f"co-relation rating"):
+        if st.button(f"correlation rating"):
             update_corelation_review(serial_nos, corelation_review)
-  
+            # st.experimental_rerun()
+
+
+
     else:
         st.warning(f"No prompts found for image {st.session_state.image_number}.")
    
-
-
     # Add new prompt section
     st.write(f"Add a new prompt for Image {st.session_state.image_number}:")
     new_prompt_input = st.text_area(f"New Prompt for Image {st.session_state.image_number}",
                                     key=f"new_prompts_{st.session_state.image_number}")
     if st.button(f"Add New Prompt for Image {st.session_state.image_number}"):
         add_new_prompt(st.session_state.image_number, new_prompt_input)
-       
+
+
 # Approve/Reject buttons styling
 button_styles = """
     <style>
@@ -413,14 +390,6 @@ button_styles = """
             font-size: 18px;
         }
        
-        #reject_button button {
-            background-color: #dc3545;
-            color: white;
-            border: none;
-            width: 100%;
-            padding: 15px;
-            font-size: 18px;
-        }
        
         .stButton > button[kind="secondary"] {
             background-color: #2f4f4f;
@@ -503,9 +472,6 @@ with col1:
     if st.button("← Back", key="back_button", on_click=go_back):
         pass
 
-# with col2:
-#     st.markdown(f"<h3 style='text-align: center'>Image {st.session_state.image_number}</h3>", unsafe_allow_html=True)
-
 with col3:
     if st.button("Next →", key="next_button", on_click=go_next):
         pass
@@ -513,4 +479,3 @@ with col3:
 # Reset navigation_clicked state at the end of the script
 if st.session_state.navigation_clicked:
     st.session_state.navigation_clicked = False
-

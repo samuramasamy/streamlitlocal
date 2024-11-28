@@ -1,4 +1,3 @@
-
 import logging
 import streamlit as st
 import os
@@ -257,19 +256,58 @@ def update_image_number():
     except ValueError:
         st.error("Please enter a valid integer.")
        
-col1, col2 , col3= st.columns([1, 2, 3])
+# col1, col2 , col3= st.columns([1, 2, 3])
 
-with col1:
-    st.markdown(f"<h3 style='text-align: center'>Image {st.session_state.image_number}</h3>", unsafe_allow_html=True)
+# with col1:
+#     st.markdown(f"<h3 style='text-align: center'>Image {st.session_state.image_number}</h3>", unsafe_allow_html=True)
 
-with col3:    
-        image_number_input = st.text_input(
-        "Enter Image Number:",
-        value=str(st.session_state.image_number),
+# with col3:    
+#         image_number_input = st.text_input(
+#         "Enter Image Number:",
+#         value=str(st.session_state.image_number),
            
+#         key="image_number_input",
+#         on_change=update_image_number
+#         )
+# Styling for the application
+st.markdown("""
+    <style>
+    /* Custom style for compact search input */
+    div[data-testid="stTextInput"] {
+        max-width: 230px;  /* Make the search bar smaller */
+    }
+    div[data-testid="stTextInput"] input {
+        border: 3px solid #4CAF50;
+        border-radius: 8px;
+        padding: 10px 10px 10px 35px;  /* Space for icon */
+        font-size: 14px;
+        background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>');
+        background-repeat: no-repeat;
+        background-position: 8px center;
+        background-size: 20px;
+    }
+    div[data-testid="stTextInput"] input:focus {
+        outline: none;
+        border-color: #45a049;
+        box-shadow: 0 0 5px rgba(76, 175, 80, 0.5);
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# Image number and navigation section
+col1, col2, col3 = st.columns([1,2,3])
+with col1:
+    st.markdown(f"<h4 style='text-align: center'>Image {st.session_state.image_number}</h4>", unsafe_allow_html=True)
+
+with col3:
+    # Compact search input with icon
+    image_number_input = st.text_input(
+        "", 
+        value=str(st.session_state.image_number),
+        placeholder=f"Enter image number (1-{MAX_IMAGE_NUMBER})",
         key="image_number_input",
         on_change=update_image_number
-        )
+    )
 
 # # Valid
 # Display the selected image and its prompts

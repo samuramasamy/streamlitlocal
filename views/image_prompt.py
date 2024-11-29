@@ -49,6 +49,7 @@ def update_image(sno, image_filename, image_feedback=0, image_status="Pending"):
     except Exception as e:
         st.error(f"Error updating image record: {e}")
 
+# Function to insert the prompt into the database
 def insert_prompt(sno, image_prompt, prompt_feedback=0, prompt_status="Pending"):
     try:
         conn = psycopg2.connect(**db_connection)
@@ -124,8 +125,12 @@ with st.form(key="image_upload_form"):
             st.write(f"Serial No. {sno} already exists. You can update the image or prompts.")
             image_details = get_image_details(sno)
             if image_details:
-                st.image(os.path.join(UPLOAD_DIR, image_details[0]), caption="Existing Image", use_container_width=True)
-                # st.write(f"Current Status: {image_details[1]}")
+                image_path = os.path.join(UPLOAD_DIR, image_details[0])
+                st.write(f"Image path: {image_path}")
+                if os.path.exists(image_path):
+                    st.image(image_path, caption="Existing Image", use_container_width=True)
+                else:
+                    st.error(f"Image file not found at {image_path}")
             
             # Display existing prompts
             prompts = get_prompts(sno)
@@ -141,7 +146,8 @@ with st.form(key="image_upload_form"):
                 image_path = os.path.join(UPLOAD_DIR, image_filename)
                 with open(image_path, "wb") as f:
                     f.write(uploaded_file.getbuffer())
-
+                st.write(f"Image uploaded successfully at {image_path}")
+                insert_image(sno, image_filename)
 
 # New function to update an existing prompt
 def update_prompt(sno, old_prompt, new_prompt):
@@ -213,7 +219,6 @@ def prompt_management_section():
             existing_prompts = get_prompts(prompt_sno)
 
     if management_option == "Add Prompts":
-        # Use st.form to prevent multiple submissions
         with st.form(key="add_prompt_form"):
             prompts = st.text_area(
                 "Enter New Prompts (one per line)", 
@@ -223,16 +228,14 @@ def prompt_management_section():
             
             if submit_prompts:
                 if prompts:
-                    # Add each prompt into the database
                     new_prompts_added = False
                     for prompt in prompts.splitlines():
-                        if prompt.strip():  # Ensure non-empty prompts are added
+                        if prompt.strip():
                             insert_prompt(sno=prompt_sno, image_prompt=prompt.strip())
                             new_prompts_added = True
                     
                     if new_prompts_added:
                         st.success("Prompts added successfully!")
-                        # Clear the text area after submission
                         prompts = ""
                 else:
                     st.warning("Please enter at least one prompt.")
@@ -245,38 +248,30 @@ def prompt_management_section():
             for idx, prompt in enumerate(existing_prompts):
                 col1, col2 = st.columns([3, 1])
                 with col1:
-                    edited_prompt = st.text_input(
-                        f"Edit Prompt {idx + 1}", 
-                        value=prompt, 
-                        key=f"edit_{prompt_sno}_{idx}"
-                    )
-               
-                    if st.button(f"Update", key=f"update_{prompt_sno}_{idx}"):
-                        if edited_prompt and edited_prompt != prompt:
-                            update_prompt(prompt_sno, prompt, edited_prompt)
-                            st.success("Prompt updated successfully!")
-                            # Trigger a rerun to refresh the view
-                            st.rerun()
+                    st.write(f"{idx + 1}. {prompt}")
+                with col2:
+                    edit_prompt = st.text_input(f"Edit Prompt {idx + 1}", value=prompt)
+                    update_button = st.button(f"Update {idx + 1}")
+                    
+                    if update_button:
+                        if update_prompt(sno=prompt_sno, old_prompt=prompt, new_prompt=edit_prompt):
+                            st.experimental_rerun()  # Rerun to update displayed prompts
 
     elif management_option == "Delete Prompts":
         if not existing_prompts:
-            st.warning("No existing prompts to delete.")
+            st.warning("No prompts to delete.")
         else:
-            st.write("Select Prompts to Delete:")
-            prompts_to_delete = []
+            st.write("Existing Prompts:")
             for idx, prompt in enumerate(existing_prompts):
-                if st.checkbox(prompt, key=f"delete_{prompt_sno}_{idx}"):
-                    prompts_to_delete.append(prompt)
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.write(f"{idx + 1}. {prompt}")
+                with col2:
+                    delete_button = st.button(f"Delete {idx + 1}", key=f"delete_{idx}")
+                    
+                    if delete_button:
+                        if delete_prompt(sno=prompt_sno, prompt=prompt):
+                            st.experimental_rerun()  # Rerun to update displayed prompts
 
-            if st.button("Confirm Deletion"):
-                if prompts_to_delete:
-                    for prompt in prompts_to_delete:
-                        delete_prompt(prompt_sno, prompt)
-                    st.success("Selected prompts deleted successfully!")
-                    # Trigger a rerun to refresh the view
-                    st.rerun()
-                else:
-                    st.warning("No prompts selected for deletion.")
-
-# Call the function to render the section
+# Call the prompt management section to enable prompt addition, editing, or deletion
 prompt_management_section()

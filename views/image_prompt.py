@@ -1,6 +1,7 @@
 import streamlit as st
 import psycopg2
 import os
+import pandas as pd
 from pathlib import Path
 
 # Database connection configuration
@@ -16,7 +17,7 @@ db_connection = {
 UPLOAD_DIR = "uploaded_images"
 Path(UPLOAD_DIR).mkdir(parents=True, exist_ok=True)  # Create directory if it doesn't exist
 
-# Database Functions
+# Function to insert the image record into the database
 def insert_image(sno, image_filename, image_feedback=0, image_status="Pending"):
     try:
         conn = psycopg2.connect(**db_connection)
@@ -32,22 +33,7 @@ def insert_image(sno, image_filename, image_feedback=0, image_status="Pending"):
     except Exception as e:
         st.error(f"Error inserting image record: {e}")
 
-def update_image(sno, image_filename, image_feedback=0, image_status="Pending"):
-    try:
-        conn = psycopg2.connect(**db_connection)
-        cursor = conn.cursor()
-        query = """
-        UPDATE upload_images
-        SET image = %s, status = %s, image_feedback = %s
-        WHERE sno = %s;
-        """
-        cursor.execute(query, (image_filename, image_status, image_feedback, sno))
-        conn.commit()
-        conn.close()
-        st.success(f"Image record for Serial No. {sno} updated successfully!")
-    except Exception as e:
-        st.error(f"Error updating image record: {e}")
-
+# Function to insert prompts into the database
 def insert_prompt(sno, image_prompt, prompt_feedback=0, prompt_status="Pending"):
     try:
         conn = psycopg2.connect(**db_connection)
@@ -63,77 +49,7 @@ def insert_prompt(sno, image_prompt, prompt_feedback=0, prompt_status="Pending")
     except Exception as e:
         st.error(f"Error inserting prompt: {e}")
 
-def update_prompt(sno, old_prompt, new_prompt):
-    try:
-        conn = psycopg2.connect(**db_connection)
-        cursor = conn.cursor()
-        query = """
-        UPDATE upload_prompts
-        SET image_prompts = %s
-        WHERE sno = %s AND image_prompts = %s;
-        """
-        cursor.execute(query, (new_prompt, sno, old_prompt))
-        conn.commit()
-        rows_affected = cursor.rowcount
-        conn.close()
-        if rows_affected > 0:
-            st.success(f"Prompt updated successfully!")
-            return True
-        else:
-            st.warning("Prompt not found or update failed.")
-            return False
-    except Exception as e:
-        st.error(f"Error updating prompt: {e}")
-        return False
-
-def delete_prompt(sno, prompt):
-    try:
-        conn = psycopg2.connect(**db_connection)
-        cursor = conn.cursor()
-        query = """
-        DELETE FROM upload_prompts
-        WHERE sno = %s AND image_prompts = %s;
-        """
-        cursor.execute(query, (sno, prompt))
-        conn.commit()
-        rows_affected = cursor.rowcount
-        conn.close()
-        if rows_affected > 0:
-            st.success(f"Prompt deleted successfully!")
-            return True
-        else:
-            st.warning("Prompt not found or deletion failed.")
-            return False
-    except Exception as e:
-        st.error(f"Error deleting prompt: {e}")
-        return False
-
-def get_image_details(sno):
-    try:
-        conn = psycopg2.connect(**db_connection)
-        cursor = conn.cursor()
-        query = "SELECT image, status FROM upload_images WHERE sno = %s;"
-        cursor.execute(query, (sno,))
-        result = cursor.fetchone()
-        conn.close()
-        return result
-    except Exception as e:
-        st.error(f"Error retrieving image details: {e}")
-        return None
-
-def get_prompts(sno):
-    try:
-        conn = psycopg2.connect(**db_connection)
-        cursor = conn.cursor()
-        query = "SELECT image_prompts FROM upload_prompts WHERE sno = %s;"
-        cursor.execute(query, (sno,))
-        prompts = cursor.fetchall()
-        conn.close()
-        return [prompt[0] for prompt in prompts]
-    except Exception as e:
-        st.error(f"Error retrieving prompts: {e}")
-        return []
-
+# Function to check if Serial No. exists in the database
 def check_serial_exists(sno):
     try:
         conn = psycopg2.connect(**db_connection)
@@ -142,62 +58,62 @@ def check_serial_exists(sno):
         cursor.execute(query, (sno,))
         count = cursor.fetchone()[0]
         conn.close()
-        return count > 0
+        return count > 0  # Return True if Serial No. exists
     except Exception as e:
         st.error(f"Error checking serial number: {e}")
         return False
 
-# Streamlit Layout
-st.title("Image and Prompt Management")
+# Streamlit app layout
+st.title("Upload Image with Multiple Prompts")
 
-# Image Upload Section
+# Section for adding an image
 with st.form(key="image_upload_form"):
-    st.subheader("Add or Update Image")
+    st.subheader("Add Image")
     sno = st.text_input("Serial No.", placeholder="Enter a unique serial number")
     uploaded_file = st.file_uploader("Choose an image file", type=["jpg", "jpeg", "png"])
-    image_status = st.selectbox("Image Status", ["Pending", "Approved", "Rejected"])
-    image_feedback = st.number_input("Feedback Score (0-5)", min_value=0, max_value=5, step=1)
-    submit_image = st.form_submit_button("Upload/Update Image")
+    submit_image = st.form_submit_button("Upload Image")
 
-    if sno and sno.isdigit():
-        sno = int(sno)
-        if submit_image and uploaded_file:
-            image_filename = f"{uploaded_file.name}_{sno}"
-            image_path = os.path.join(UPLOAD_DIR, image_filename)
-            with open(image_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-
+    if submit_image:
+        if sno and sno.isdigit() and uploaded_file:
+            sno = int(sno)  # Convert Serial No to integer
+            
+            # Check if Serial No. already exists
             if check_serial_exists(sno):
-                update_image(sno, image_filename, image_feedback, image_status)
+                st.warning(f"Serial No. {sno} has already been used. Please use a different Serial No.")
             else:
-                insert_image(sno, image_filename, image_feedback, image_status)
+                # Save the uploaded image
+                image_filename = f"{uploaded_file.name}_{sno}"
+                image_path = os.path.join(UPLOAD_DIR, image_filename)
+                with open(image_path, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
 
-            st.image(image_path, caption=f"Uploaded/Updated Image for Serial No. {sno}")
+                # Insert the image record into the database
+                insert_image(sno=sno, image_filename=image_filename)
 
-# Prompt Management Section
-st.subheader("Prompt Management")
-management_option = st.selectbox("Choose Action:", ["Add Prompts", "Edit Prompts", "Delete Prompts"])
-prompt_sno = st.text_input("Serial No. for Prompts", placeholder="Enter Serial No.")
+                # Display the uploaded image
+                st.image(image_path, caption="Uploaded Image", use_container_width=True)
+        else:
+            st.warning("Please fill in all required fields and upload an image.")
 
+# Section for adding multiple prompts for the same image
+st.subheader("Add Prompts for Uploaded Image")
+prompt_sno = st.text_input("Serial No. to Add Prompts", placeholder="Enter the Serial No. of the uploaded image")
 if prompt_sno and prompt_sno.isdigit():
     prompt_sno = int(prompt_sno)
+    
+    # Check if the Serial No. exists in the image records before allowing prompt input
+    if not check_serial_exists(prompt_sno):
+        st.warning(f"Serial No. {prompt_sno} does not exist in the database. Please upload an image first.")
+    else:
+        with st.form(key="prompt_form"):
+            prompts = st.text_area("Enter Prompts (one per line)", placeholder="Enter multiple prompts separated by new lines")
+            submit_prompts = st.form_submit_button("Add Prompts")
 
-    if management_option == "Add Prompts":
-        prompts = st.text_area("Enter Prompts (one per line)")
-        if st.button("Add Prompts"):
-            for prompt in prompts.splitlines():
-                if prompt.strip():
-                    insert_prompt(prompt_sno, prompt.strip())
-
-    elif management_option == "Edit Prompts":
-        existing_prompts = get_prompts(prompt_sno)
-        for prompt in existing_prompts:
-            new_prompt = st.text_input(f"Edit Prompt: {prompt}", value=prompt)
-            if st.button(f"Update {prompt}"):
-                update_prompt(prompt_sno, prompt, new_prompt)
-
-    elif management_option == "Delete Prompts":
-        existing_prompts = get_prompts(prompt_sno)
-        for prompt in existing_prompts:
-            if st.button(f"Delete {prompt}"):
-                delete_prompt(prompt_sno, prompt)
+            if submit_prompts:
+                if prompts:
+                    # Add each prompt into the database
+                    for prompt in prompts.splitlines():
+                        if prompt.strip():  # Ensure non-empty prompts are added
+                            insert_prompt(sno=prompt_sno, image_prompt=prompt.strip())
+                else:
+                    st.warning("Please enter at least one prompt.")

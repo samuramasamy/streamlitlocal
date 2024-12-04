@@ -1,7 +1,19 @@
-import streamlit as st
-import psycopg2
+
+
 import os
+import json
+import tempfile
+import streamlit as st
+from PIL import Image
+from io import BytesIO
+from google.cloud import storage
+from sqlalchemy import create_engine, text
+import psycopg2
+import pandas as pd
 from pathlib import Path
+
+# Streamlit app title
+st.title("Fine-tuning GenAI Project")
 
 # Database connection configuration
 db_connection = {
@@ -12,42 +24,177 @@ db_connection = {
     "password": "postgres-genai"
 }
 
-# Directory to save uploaded images
-UPLOAD_DIR = "uploaded_images"
-Path(UPLOAD_DIR).mkdir(parents=True, exist_ok=True)  # Create directory if it doesn't exist
+# Set up session state
+if "image_number" not in st.session_state:
+    st.session_state.image_number = 1
+if "navigation_clicked" not in st.session_state:
+    st.session_state.navigation_clicked = False
 
-# Function to insert the image record into the database
-def insert_image(sno, image_filename, image_feedback=0, image_status="Pending"):
+# Load Google Cloud Storage credentials
+gcs_credentials = json.loads(st.secrets["database"]["credentials"])
+with tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.json') as temp_file:
+    json.dump(gcs_credentials, temp_file)
+    temp_file_path = temp_file.name
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file_path
+
+# Initialize Google Cloud Storage client and bucket
+client = storage.Client()
+bucket_name = 'open-to-public-rw-sairam'
+bucket = client.get_bucket(bucket_name)
+
+# Connect to PostgreSQL database using SQLAlchemy
+connection_string = st.secrets["database"]["connection_string"]
+engine = create_engine(connection_string)
+
+# Function to upload an image to Google Cloud Storage
+def upload_image_to_gcs(file_path, destination_blob_name):
+    try:
+        blob = bucket.blob(destination_blob_name)
+        blob.upload_from_filename(file_path)
+        st.success(f"File '{file_path}' uploaded to Google Cloud Storage as '{destination_blob_name}'.")
+    except Exception as e:
+        st.error(f"Error uploading image to GCS: {e}")
+
+# Function to check if an image exists in the bucket
+def image_exists_in_bucket(bucket, image_path):
+    blob = bucket.blob(image_path)
+    try:
+        blob.reload()
+        return True
+    except Exception:
+        return False
+
+# Function to insert image metadata into PostgreSQL database
+def insert_image_metadata(sno, image_filename, status=None, image_feedback=None):
     try:
         conn = psycopg2.connect(**db_connection)
         cursor = conn.cursor()
+
+        # Check if `sno` already exists in the table
+        cursor.execute("SELECT COUNT(*) FROM upload_images WHERE sno = %s;", (sno,))
+        if cursor.fetchone()[0] > 0:
+            st.warning(f"Serial No. {sno} already exists in the database. Image will not be uploaded to GCS again.")
+            cursor.close()
+            conn.close()
+            return  # Exit the function if the serial number is a duplicate
+
+        # If `sno` is new, insert metadata and upload image
         query = """
         INSERT INTO upload_images (sno, image, status, image_feedback)
         VALUES (%s, %s, %s, %s);
         """
-        cursor.execute(query, (sno, image_filename, image_status, image_feedback))
+        cursor.execute(query, (sno, image_filename, status, image_feedback))
         conn.commit()
+        cursor.close()
         conn.close()
-        st.success(f"Image record for Serial No. {sno} added successfully!")
+        st.success("Image metadata inserted successfully.")
     except Exception as e:
-        st.error(f"Error inserting image record: {e}")
+        st.error(f"Error inserting metadata: {e}")
 
-# Function to update the image record in the database
-def update_image(sno, image_filename, image_feedback=0, image_status="Pending"):
+# Function to fetch data from PostgreSQL database
+def fetch_data_from_db():
     try:
         conn = psycopg2.connect(**db_connection)
-        cursor = conn.cursor()
-        query = """
-        UPDATE upload_images
-        SET image = %s, status = %s, image_feedback = %s
-        WHERE sno = %s;
-        """
-        cursor.execute(query, (image_filename, image_status, image_feedback, sno))
-        conn.commit()
+        query = "SELECT * FROM upload_images;"
+        df = pd.read_sql(query, conn)
         conn.close()
-        st.success(f"Image record for Serial No. {sno} updated successfully!")
+        return df
     except Exception as e:
-        st.error(f"Error updating image record: {e}")
+        st.error(f"Error fetching data: {e}")
+        return None
+
+# Streamlit form for uploading a new image
+st.subheader("Upload New Image")
+uploaded_image_placeholder = st.empty()
+
+with st.form(key="new_image_form"):
+    sno = st.text_input("Serial No.")
+    uploaded_file = st.file_uploader("Choose an image file", type=["jpg", "jpeg", "png"])
+    submit_button = st.form_submit_button("Add Image Record")
+
+    if submit_button:
+        if sno and uploaded_file:
+            if sno.isdigit():
+                # Check if `sno` exists in the database before proceeding
+                conn = psycopg2.connect(**db_connection)
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM upload_images WHERE sno = %s;", (int(sno),))
+                if cursor.fetchone()[0] > 0:
+                    st.warning(f"Serial No. {sno} already exists in the database. Image will not be uploaded to GCS.")
+                else:
+                    # Save the image locally first
+                    image_filename = f"{uploaded_file.name}"
+                    image_path = os.path.join("uploaded_images", image_filename)
+                    Path("uploaded_images").mkdir(parents=True, exist_ok=True)
+                    with open(image_path, "wb") as f:
+                        f.write(uploaded_file.getbuffer())
+
+                    # Upload image to Google Cloud Storage
+                    upload_image_to_gcs(image_path, f"Upload_images/Moodboard Images/{image_filename}")
+
+                    # Insert metadata into the database
+                    insert_image_metadata(int(sno), image_filename)
+
+                    # Display the uploaded image
+                    uploaded_image_placeholder.image(image_path, caption="Uploaded Image", use_container_width=True)
+                
+                cursor.close()
+                conn.close()
+            else:
+                st.warning("Serial No. must be a valid number.")
+        else:
+            st.warning("Please fill in all required fields and upload an image.")
+
+# # Display data from the 'upload_images' table
+# st.subheader("Existing Data")
+# df = fetch_data_from_db()
+# if df is not None:
+#     st.write("Data from the 'upload_images' table:")
+#     st.dataframe(df)
+# else:
+#     st.write("No data available.")
+
+# Image navigation without a limit on image number
+st.subheader("Image Navigation")
+col1, col2, col3 = st.columns([1, 2, 3])
+with col1:
+    st.markdown(f"<h4 style='text-align: center'>Image {st.session_state.image_number}</h4>", unsafe_allow_html=True)
+
+with col3:
+    # Input for image number
+    image_number_input = st.text_input(
+        "",
+        value=str(st.session_state.image_number),
+        placeholder="Enter image number",
+        key="image_number_input",
+        on_change=lambda: update_image_number()
+    )
+
+# Function to update the current image number
+def update_image_number():
+    try:
+        input_number = int(st.session_state.image_number_input)
+        # No upper limit check, accept any integer
+        st.session_state.image_number = input_number
+    except ValueError:
+        st.error("Please enter a valid integer.")
+
+# Display the selected image
+image_name = f"image{st.session_state.image_number}.jpg"
+image_path = os.path.join("Upload_images/Moodboard Images/", image_name)
+
+try:
+    if image_exists_in_bucket(bucket, image_path):
+        blob = bucket.blob(image_path)
+        image_data = blob.download_as_bytes()
+        image = Image.open(BytesIO(image_data))
+        st.image(image, caption=f"Image {st.session_state.image_number}", use_container_width=True)
+    else:
+        st.error(f"Image {st.session_state.image_number} not found in the bucket.")
+except Exception as e:
+    st.error(f"Error loading image: {e}")
+
+
 
 def insert_prompt(sno, image_prompt, prompt_feedback=0, prompt_status="Pending"):
     try:
@@ -106,41 +253,6 @@ def check_serial_exists(sno):
         st.error(f"Error checking serial number: {e}")
         return False
 
-# Streamlit app layout
-st.title("Upload Image with Multiple Prompts")
-
-with st.form(key="image_upload_form"):
-    st.subheader("Add or Edit Image")
-    sno = st.text_input("Serial No.", placeholder="Enter a unique serial number")
-    uploaded_file = st.file_uploader("Choose an image file", type=["jpg", "jpeg", "png"])
-    submit_image = st.form_submit_button("Upload/Update Image")
-
-    if sno and sno.isdigit():
-        sno = int(sno)  # Convert Serial No to integer
-
-        # If Serial No. exists, show existing image and prompts
-        if check_serial_exists(sno):
-            st.write(f"Serial No. {sno} already exists. You can update the image or prompts.")
-            image_details = get_image_details(sno)
-            if image_details:
-                st.image(os.path.join(UPLOAD_DIR, image_details[0]), caption="Existing Image", use_container_width=True)
-
-        if submit_image:
-            if uploaded_file:
-                # Save the uploaded file and perform database operation
-                image_filename = f"{uploaded_file.name}_{sno}"
-                image_path = os.path.join(UPLOAD_DIR, image_filename)
-                with open(image_path, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
-
-                if check_serial_exists(sno):
-                    update_image(sno, image_filename)
-                else:
-                    insert_image(sno, image_filename)
-            else:
-                st.warning("Please upload an image file before submitting.")
-
-      
 
 # New function to update an existing prompt
 def update_prompt(sno, old_prompt, new_prompt):
@@ -244,7 +356,7 @@ def prompt_management_section():
             for idx, prompt in enumerate(existing_prompts):
                 col1, col2 = st.columns([3, 1])
                 with col1:
-                    edited_prompt = st.text_input(
+                    edited_prompt = st.text_area(
                         f"Edit Prompt {idx + 1}", 
                         value=prompt, 
                         key=f"edit_{prompt_sno}_{idx}"

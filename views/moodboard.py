@@ -213,7 +213,24 @@ def update_corelation_review(serial_nos, corelation_review):
     except Exception as e:
         st.error(f"Failed to update correlation review: {e}")
 
+# Adding comments if any:
+def add_comments(serial_nos, comments):
+    try:
+        query= text ("""INSERT INTO prompts (sno, image_prompts, prompt_feedback, status)
+        VALUES (:sno, :image_prompts, 10, 'PENDING')
+        """)
+        with engine.connect() as conn:
+            conn.execute(query, {
+                "serial_nos": serial_nos,
+                "image_prompts": comments
+            })
+            conn.commit()
+        st.success("Comments added successfully!")
+    except Exception as e:
+        st.error(f"Failed to add new comments: {e}")
+        
 
+        
 
 # Function to add new prompt
 def add_new_prompt(image_number, prompt_text):
@@ -231,6 +248,8 @@ def add_new_prompt(image_number, prompt_text):
         st.success("New prompt added successfully!")
     except Exception as e:
         st.error(f"Failed to add new prompt: {e}")
+
+
 
 # Function to handle image number update
 def update_image_number():
@@ -271,16 +290,30 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Image number and navigation section
-col1, col2, col3 = st.columns([1,2,3])
-with col1:
-    st.markdown(f"<h4 style='text-align: center'>Image {st.session_state.image_number}</h4>", unsafe_allow_html=True)
+col1 = st.columns([1])  # One column for the left side
+with col1[0]: 
+    st.markdown(f"<h4 style='text-align: left'>Moodboard {st.session_state.image_number}</h4>", unsafe_allow_html=True)
 
-with col3:
+col1, col2, col3 = st.columns([1, 2, 3])  # Three columns for layout
+with col3: 
+    # Custom CSS to style the text_input box and move it upwards
+    st.markdown("""
+        <style>
+            div[data-testid="stTextInput"] {
+                margin-top: -90px;  /* Move the input box upwards */
+                text-align: right;  /* Align text inside the input box to the right */
+                width: 200px;  /* Set the width of the input box */
+            }
+            input[data-testid="stTextInput"] {
+                font-size: 10px;  /* Adjust the font size inside the input box */
+        </style>
+    """, unsafe_allow_html=True)
+
     # Compact search input with icon
     image_number_input = st.text_input(
         "", 
         value=str(st.session_state.image_number),
-        placeholder=f"Enter image number (1-{MAX_IMAGE_NUMBER})",
+        placeholder=f"Enter moodboard number (1-{MAX_IMAGE_NUMBER})",
         key="image_number_input",
         on_change=update_image_number
     )
@@ -291,32 +324,56 @@ with col3:
 image_name = f"image{st.session_state.image_number}.jpg"
 image_path = os.path.join(image_prefix, image_name)
 
-col1, col2 = st.columns([1, 2])
 
-with col1:
-    # Load the image from Google Cloud Storage
+col1, col2, col3 = st.columns([1, 2, 3])  # Three columns for layout
+with col2: 
     try:
         if image_exists_in_bucket(bucket, image_path):
             blob = bucket.blob(image_path)
             image_data = blob.download_as_bytes()
             image = Image.open(BytesIO(image_data))
-            st.image(image, caption=f"Image {st.session_state.image_number}")
+
+            # Display the image with a medium size
+            st.image(
+                image, 
+                caption=f"Image {st.session_state.image_number}", 
+                width=280  # Adjust this value to set the image width
+            )
         else:
             st.error(f"Image {st.session_state.image_number} not found.")
     except Exception as e:
         st.error(f"Error loading image: {e}")
+    
+col1, col2 = st.columns([1, 2])
+
+with col1:
+    
     # Get existing review and status from the database
     image_review_score, image_status = get_image_feedback(image_name)
     # Image rating slider
     image_review = st.slider(f"Rate Image {st.session_state.image_number}:", 1, 10, value=image_review_score, format="%d")
     if st.button(f"Submit rating"):
         update_image_review(image_name, image_review)
+        
 
+ 
+# Comments section below the rating slider
+# with st.container():
+    serial_nos = st.write()
+    comments = st.text_area("Add your comments:", placeholder="Write your comments here...")
+    # serial_nos, comments = add_comments()
+    if st.button("Submit comments"):
+        if comments.strip():
+            add_comments(serial_nos, comments)
+        else:
+            st.error("Please add a comment before submitting!")
+        
 
 with col2:
     prompts_df = get_prompts(st.session_state.image_number)
     if not prompts_df.empty:
         prompt_options = prompts_df['image_prompts'].tolist()
+        
         selected_prompt_index = st.selectbox(
             f"Select prompt for image {st.session_state.image_number}",
             range(len(prompt_options)),
@@ -326,10 +383,15 @@ with col2:
         serial_nos = prompts_df.iloc[selected_prompt_index]['serial_nos']
 
 
-        # Edit Prompt Button
-        if st.button("🖉 Edit Prompt", key=f"edit_prompt_{serial_nos}"):
+        st.markdown("""
+            <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+        """, unsafe_allow_html=True)
+
+        # Use FontAwesome for Edit button with larger icon
+        if st.button("Edit🖉 ", key=f"edit_prompt_{serial_nos}", help="Edit the prompt"):
             st.session_state.edit_mode = True
-       
+
+        # Display the text area to edit the prompt if in edit mode
         if st.session_state.get("edit_mode"):
             with st.form(key=f"edit_form_{serial_nos}"):
                 new_prompt = st.text_area(
@@ -346,7 +408,8 @@ with col2:
                         logger.info(f"Prompt {serial_nos} successfully updated.")
                     else:
                         st.warning("Please provide a new prompt value.")
-           
+
+      
        
        
     # Get existing review and status from the database
@@ -354,12 +417,12 @@ with col2:
 
     # Image rating slider
         st.write(f"Prompt:- {selected_prompt}")
-        prompt_review = st.slider(f"Rate Prompt:", 1, 10, value=0, format="%d")
+        prompt_review = st.slider(f"Rate Prompt:", 1, 10, value=1, format="%d")
 
         if st.button(f"prompt rating"):
             update_prompt_review(serial_nos, prompt_review)
                     
-        corelation_review = st.slider(f"Co-relation Rate:", 1, 10, value=0, format="%d")
+        corelation_review = st.slider(f"Correlation Rate:", 1, 10, value=1, format="%d")
 
         if st.button(f"correlation rating"):
             update_corelation_review(serial_nos, corelation_review)
@@ -369,13 +432,28 @@ with col2:
 
     else:
         st.warning(f"No prompts found for image {st.session_state.image_number}.")
-   
+
     # Add new prompt section
     st.write(f"Add a new prompt for Image {st.session_state.image_number}:")
-    new_prompt_input = st.text_area(f"New Prompt for Image {st.session_state.image_number}",
-                                    key=f"new_prompts_{st.session_state.image_number}")
-    if st.button(f"Add New Prompt for Image {st.session_state.image_number}"):
-        add_new_prompt(st.session_state.image_number, new_prompt_input)
+
+    # Check if button clicked
+    if st.button(f"Add New Prompt"):
+        # Set a session state variable to show the text area after the button is clicked
+        st.session_state.show_new_prompt_text_area = True
+
+    # Only show the text area if the session state variable is True
+    if "show_new_prompt_text_area" in st.session_state and st.session_state.show_new_prompt_text_area:
+        # Display the text area to add a new prompt
+        new_prompt_input = st.text_area(f"New Prompt for Image {st.session_state.image_number}",
+                                        key=f"new_prompts_{st.session_state.image_number}")
+
+        # Submit button to add the new prompt
+        if st.button(f"Submit New Prompt"):
+            # Call the function to add the new prompt to the database
+            add_new_prompt(st.session_state.image_number, new_prompt_input)
+
+            # Reset the state to hide the text area and button after submission
+            st.session_state.show_new_prompt_text_area = False
 
 
 # Approve/Reject buttons styling
@@ -479,3 +557,7 @@ with col3:
 # Reset navigation_clicked state at the end of the script
 if st.session_state.navigation_clicked:
     st.session_state.navigation_clicked = False
+
+
+
+

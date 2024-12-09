@@ -26,16 +26,30 @@ def fetch_data_from_db():
         st.error(f"Error: {e}")
         return None
 
+# Function to check for duplicate prompts in the database
+def check_duplicate_prompt(image_prompt):
+    try:
+        conn = psycopg2.connect(**db_connection)
+        cursor = conn.cursor()
+        query = "SELECT 1 FROM upload_prompts WHERE image_prompts = %s LIMIT 1;"  # Check if prompt exists
+        cursor.execute(query, (image_prompt,))
+        result = cursor.fetchone()
+        conn.close()  # Close the connection
+        return result is not None  # If prompt exists, return True
+    except Exception as e:
+        st.error(f"Error checking for duplicate prompt: {e}")
+        return False
+
 # Function to insert a new prompt into the PostgreSQL database
-def insert_new_prompt(serial_no, prompt_feedback, image_prompt, status):
+def insert_new_prompt(serial_no, image_prompt):
     try:
         conn = psycopg2.connect(**db_connection)
         cursor = conn.cursor()
         query = """
-        INSERT INTO upload_prompts (sno, prompt_feedback, image_prompts, status)
-        VALUES (%s, %s, %s, %s);
+        INSERT INTO upload_prompts (sno, image_prompts)
+        VALUES (%s, %s);
         """
-        cursor.execute(query, (serial_no, prompt_feedback, image_prompt, status))
+        cursor.execute(query, (serial_no, image_prompt))
         conn.commit()  # Commit the transaction
         conn.close()  # Close the connection
         st.success("New prompt added successfully!")
@@ -43,7 +57,7 @@ def insert_new_prompt(serial_no, prompt_feedback, image_prompt, status):
         st.error(f"Error inserting new prompt: {e}")
 
 # Streamlit app layout
-st.title("Upload Prompts - Data from Database")
+st.title("Upload Prompts ")
 
 # Section to Add New Prompt
 st.subheader("Add New Prompt")
@@ -51,38 +65,20 @@ st.subheader("Add New Prompt")
 # Streamlit form for adding a new prompt
 with st.form(key="new_prompt_form"):
     serial_no = st.text_input("Serial No.")
-    
-    # Using st.slider to accept values between 1 and 10 for prompt_feedback
-    prompt_feedback = st.slider("Prompt Feedback (1 to 10)", min_value=1, max_value=10, value=1)
-    
     image_prompt = st.text_area("Image Prompt")
-    
-    # Dropdown menu for status selection
-    status = st.selectbox("Status", ["APPROVED", "REJECTED"])
-
     submit_button = st.form_submit_button("Add Prompt")
 
     # If the form is submitted, insert new data into the database
     if submit_button:
-        if serial_no and prompt_feedback:  # Check for required fields
-            # Validate if serial_no is a valid integer (or other desired checks)
-            if serial_no.isdigit():
-                insert_new_prompt(serial_no, prompt_feedback, image_prompt, status)
-                
+        if serial_no.isdigit():  # Check if serial_no is a valid integer
+            # Check if the prompt already exists
+            if check_duplicate_prompt(image_prompt):
+                st.warning("This prompt already exists. Please enter a unique prompt.")
+            else:
+                # Insert the new prompt if it's unique
+                insert_new_prompt(serial_no, image_prompt)
                 # Re-fetch the data after insertion
                 df = fetch_data_from_db()
-        #         if df is not None and not df.empty:
-        #             st.write("Data from the 'upload_prompts' table:")
-        #             # Display the updated data
-        #             st.dataframe(df, hide_index=True)
-        #         else:
-        #             st.write("No data available.")
-        #     else:
-        #         st.warning("Serial No. must be a valid number.")
-        # else:
-        #     st.warning("Please fill in all required fields.")
-
-# Display the initial data when the app loads (only once)
 
 df = fetch_data_from_db()
 

@@ -365,7 +365,7 @@ with col1:
  
     # Comments section
     st.subheader("Add Comments")
-    comments = st.text_area("Add your comments:", placeholder="Write your comments here...")
+    comments = st.text_area("", placeholder="Write your comments here...")
     if st.button("Submit Comments"):
         if comments.strip():
             # Use the current image number as the serial_nos

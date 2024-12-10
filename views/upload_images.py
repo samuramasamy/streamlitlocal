@@ -258,7 +258,7 @@ st.subheader("Existing Data")
 df = fetch_data_from_db()
 if df is not None:
     st.write("Data from the 'upload_images' table:")
-    st.dataframe(df)
+    st.dataframe(df, hide_index=True)
 else:
     st.write("No data available.")
 

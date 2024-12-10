@@ -363,16 +363,16 @@ with col1:
         
 
  
-# Comments section below the rating slider
-# with st.container():
-    serial_nos = st.write()
+    # Comments section
+    st.subheader("Add Comments")
     comments = st.text_area("Add your comments:", placeholder="Write your comments here...")
-    # serial_nos, comments = add_comments()
-    if st.button("Submit comments"):
+    if st.button("Submit Comments"):
         if comments.strip():
-            add_comments(serial_nos, comments)
+            # Use the current image number as the serial_nos
+            add_comments(st.session_state.image_number, comments)
         else:
             st.error("Please add a comment before submitting!")
+        
         
 
 with col2:

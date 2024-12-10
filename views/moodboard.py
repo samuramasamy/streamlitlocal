@@ -213,21 +213,27 @@ def update_corelation_review(serial_nos, corelation_review):
     except Exception as e:
         st.error(f"Failed to update correlation review: {e}")
 
-# Adding comments if any:
+# Function to add comments
 def add_comments(serial_nos, comments):
     try:
-        query= text ("""INSERT INTO prompts (sno, image_prompts, prompt_feedback, status)
-        VALUES (:sno, :image_prompts, 10, 'PENDING')
-        """)
-        with engine.connect() as conn:
-            conn.execute(query, {
-                "serial_nos": serial_nos,
-                "image_prompts": comments
-            })
+        update_query = """
+        UPDATE prompts
+        SET comments = %s
+        WHERE serial_nos = %s
+        """
+        with conn.cursor() as cursor:
+            cursor.execute(update_query, (comments, int(serial_nos)))
             conn.commit()
-        st.success("Comments added successfully!")
+
+            # Check if rows were updated
+            if cursor.rowcount > 0:
+                st.success("Comments added successfully!")
+                logger.info(f"Comments added to serial_nos {serial_nos}.")
+            else:
+                st.warning("No rows updated. Check if the serial number exists.")
     except Exception as e:
-        st.error(f"Failed to add new comments: {e}")
+        st.error(f"Failed to add comments: {e}")
+        logger.error(f"Error adding comments: {e}")
         
 
         

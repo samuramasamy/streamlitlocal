@@ -72,11 +72,15 @@ image_prompt_page = st.Page(
     title="image_prompt",
     icon=":material/image:"
 )
-
+fashion_tech_page = st.Page(
+    page="views/fashion_tech.py",
+    title="fashion_tech",
+    icon=":material/image:"
+)
 pg = st.navigation(
     {
         "Info": [about_page],
-        "Project": [moodboard_page, upload_prompts_page,upload_images_page,image_prompt_page],
+        "Project": [moodboard_page, upload_prompts_page,upload_images_page,image_prompt_page,fashion_tech_page],
     }
 )
 pg.run()

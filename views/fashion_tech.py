@@ -406,7 +406,7 @@ with col2:
         st.warning(f"No prompts found for image {st.session_state.image_number}.")
 
     # Add new prompt section
-    st.write(f"Add a new prompt for Image")
+    st.write(f"Add a new prompt ")
 
     # Check if button clicked
     if st.button(f"Add New Prompt"):

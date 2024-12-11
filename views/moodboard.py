@@ -281,7 +281,7 @@ st.markdown("""
         border: 3px solid #4CAF50;
         border-radius: 8px;
         padding: 10px 10px 10px 35px;  /* Space for icon */
-        font-size: 14px;
+        font-size: 13px;
         background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>');
         background-repeat: no-repeat;
         background-position: 8px center;
@@ -310,8 +310,6 @@ with col3:
                 text-align: right;  /* Align text inside the input box to the right */
                 width: 200px;  /* Set the width of the input box */
             }
-            input[data-testid="stTextInput"] {
-                font-size: 10px;  /* Adjust the font size inside the input box */
         </style>
     """, unsafe_allow_html=True)
 
@@ -319,10 +317,65 @@ with col3:
     image_number_input = st.text_input(
         "", 
         value=str(st.session_state.image_number),
-        placeholder=f"Enter moodboard number (1-{MAX_IMAGE_NUMBER})",
+        placeholder=f"Enter Moodboard (1-{MAX_IMAGE_NUMBER})",
         key="image_number_input",
         on_change=update_image_number
     )
+
+# st.markdown("""
+#     <style>
+#     /* Custom style for compact search input */
+#     div[data-testid="stTextInput"] {
+#         max-width: 250px;  /* Make the search bar smaller */
+#     }
+#     div[data-testid="stTextInput"] input {
+#         border: 3px solid #4CAF50;
+#         border-radius: 8px;
+#         padding: 10px 10px 10px 35px;  /* Space for icon */
+#         font-size: 14px;
+#         background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>');
+#         background-repeat: no-repeat;
+#         background-position: 8px center;
+#         background-size: 20px;
+#     }
+#     div[data-testid="stTextInput"] input:focus {
+#         outline: none;
+#         border-color: #45a049;
+#         box-shadow: 0 0 5px rgba(76, 175, 80, 0.5);
+#     }
+#     </style>
+# """, unsafe_allow_html=True)
+
+# # Image number and navigation section
+# col1 = st.columns([1])  # One column for the left side
+# with col1[0]: 
+#     st.markdown(f"<h4 style='text-align: left'>Moodboard {st.session_state.image_number}</h4>", unsafe_allow_html=True)
+
+# col1, col2, col3 = st.columns([1, 2, 3])  # Three columns for layout
+# with col3: 
+#     # Custom CSS to style the text_input box and move it upwards
+#     st.markdown("""
+#         <style>
+#             div[data-testid="stTextInput"] {
+#                 margin-top: -90px;  /* Move the input box upwards */
+#                 text-align: right;  /* Align text inside the input box to the right */
+#                 width: 200px;  /* Set the width of the input box */
+#             }
+#             input[data-testid="stTextInput"] {
+#                 font-size: 10px;  /* Adjust the font size inside the input box */
+#         </style>
+#     """, unsafe_allow_html=True)
+
+#     # Compact search input with icon
+#     image_number_input = st.text_input(
+#         "", 
+#         value=str(st.session_state.image_number),
+#         placeholder=f"Enter moodboard number (1-{MAX_IMAGE_NUMBER})",
+#         key="image_number_input",
+#         on_change=update_image_number
+#     )
+
+
 
        
 

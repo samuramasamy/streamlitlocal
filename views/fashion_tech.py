@@ -150,7 +150,7 @@ with col3:
     image_number_input = st.text_input(
         "", 
         value=str(st.session_state.image_number),
-        placeholder=f"Enter Moodboard (1-{MAX_IMAGE_NUMBER})",
+        placeholder=f"Enter Fashion Tech (1-{MAX_IMAGE_NUMBER})",
         key="image_number_input",
         on_change=update_image_number
     )
